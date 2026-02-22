@@ -1,0 +1,80 @@
+from google.colab import files
+uploaded = files.upload()
+
+!pip install transformers
+
+import pandas as pd
+import math
+from transformers import pipeline
+df = pd.read_csv("amazon.csv")
+print(df.head())
+df = df[['review_content','rating']]
+
+# Convert rating to numeric
+df['rating'] = pd.to_numeric(df['rating'], errors='coerce')
+
+# Create sentiment
+df['sentiment'] = df['rating'].apply(
+    lambda x: "Satisfied" if x >= 4 else "Unsatisfied"
+)
+
+satisfied = df[df['sentiment']=="Satisfied"]['review_content'].tolist()
+unsatisfied = df[df['sentiment']=="Unsatisfied"]['review_content'].tolist()
+def word_count(data):
+    d = {}
+    for s in data:
+        for w in str(s).lower().split():
+            d[w] = d.get(w, 0) + 1
+    return d
+
+sat_words = word_count(satisfied)
+unsat_words = word_count(unsatisfied)
+total = len(satisfied) + len(unsatisfied)
+p_sat = len(satisfied)/total
+p_unsat = len(unsatisfied)/total
+
+vocab = set(sat_words) | set(unsat_words)
+V = len(vocab)
+
+sat_total = sum(sat_words.values())
+unsat_total = sum(unsat_words.values())
+def predict_nb(text):
+    s_score = math.log(p_sat)
+    u_score = math.log(p_unsat)
+
+    for w in str(text).lower().split():
+        s_score += math.log((sat_words.get(w,0)+1)/(sat_total+V))
+        u_score += math.log((unsat_words.get(w,0)+1)/(unsat_total+V))
+
+    return "Satisfied" if s_score>u_score else "Unsatisfied"
+tests = [
+    "good product and fast charging",
+    "worst cable ever",
+    "happy with quality",
+    "very slow delivery",
+    "not helpful"
+]
+
+print("Naive Bayes Results:\n")
+for t in tests:
+    print(t,"->",predict_nb(t))
+classifier = pipeline(
+    "sentiment-analysis",
+    model="distilbert-base-uncased-finetuned-sst-2-english"
+)
+
+print("\nHugging Face Results:\n")
+for t in tests:
+    r = classifier(t)[0]
+    label = "Satisfied" if r["label"]=="POSITIVE" else "Unsatisfied"
+    print(f"{t} -> {label} ({r['score']:.2f})")
+print("\nComparison")
+print("Feedback".ljust(30),"NB".ljust(12),"HF")
+
+for t in tests:
+    nb=predict_nb(t)
+    hf="Satisfied" if classifier(t)[0]["label"]=="POSITIVE" else "Unsatisfied"
+    print(t.ljust(30),nb.ljust(12),hf)
+
+
+ 
